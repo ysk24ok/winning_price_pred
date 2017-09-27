@@ -1,0 +1,7 @@
+pyflakes
+pep8
+numpy
+scipy
+pandas
+scikit-learn
+nose
