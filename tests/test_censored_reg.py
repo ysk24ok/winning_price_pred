@@ -50,27 +50,31 @@ class TestCensoredLinearModel(TestCase):
         self.X_lose = X_lose
         self.y_win = y_win
         self.y_lose = y_lose
+        self.sigma = np.std(y_win)
         self.n_features = X_win.shape[1]
 
     def test_loss_function(self):
         clm = testee.CensoredLinearModel(self.n_features)
         got = clm.loss_function(
-            clm.beta, self.X_win, self.y_win, self.X_lose, self.y_lose, clm.l2reg)
-        assert_almost_equal(got, 6535.3056, places=4)
+            clm.beta, self.X_win, self.y_win, self.X_lose, self.y_lose,
+            self.sigma, clm.l2reg)
+        assert_almost_equal(got, 421.7217, places=4)
 
     def test_loss_function_with_l2reg(self):
         clm = testee.CensoredLinearModel(self.n_features)
         clm.beta = np.ones(self.n_features)
         got = clm.loss_function(
-            clm.beta, self.X_win, self.y_win, self.X_lose, self.y_lose, clm.l2reg)
-        assert_almost_equal(got, 1197.2460, places=4)
+            clm.beta, self.X_win, self.y_win, self.X_lose, self.y_lose,
+            self.sigma, clm.l2reg)
+        assert_almost_equal(got, 161.3537, places=4)
 
     def test_gradient(self):
         clm = testee.CensoredLinearModel(self.n_features)
         clm.initialize_beta()
         got = check_grad(
             clm.loss_function, clm.gradient, clm.beta,
-            self.X_win, self.y_win, self.X_lose, self.y_lose, clm.l2reg)
+            self.X_win, self.y_win, self.X_lose, self.y_lose,
+            self.sigma, clm.l2reg)
         assert_almost_equal(got, 0.000, places=3)
 
     def test_gradient_with_l2reg(self):
@@ -78,5 +82,6 @@ class TestCensoredLinearModel(TestCase):
         clm.initialize_beta()
         got = check_grad(
             clm.loss_function, clm.gradient, clm.beta,
-            self.X_win, self.y_win, self.X_lose, self.y_lose, clm.l2reg)
+            self.X_win, self.y_win, self.X_lose, self.y_lose,
+            self.sigma, clm.l2reg)
         assert_almost_equal(got, 0.000, places=3)

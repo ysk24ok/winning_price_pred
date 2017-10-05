@@ -135,15 +135,15 @@ class CensoredLinearModel(BaseRegression):
     @staticmethod
     def gradient(
             beta: np.ndarray, X_win: csr_matrix, y_win: np.ndarray,
-            X_lose: csr_matrix, y_lose: np.ndarray, l2reg: float) -> float:
-        # TODO: sigma
+            X_lose: csr_matrix, y_lose: np.ndarray,
+            sigma: float, l2reg: float) -> float:
         # gradient for win bids
-        z_win = X_win.dot(beta) - y_win
-        grad = X_win.T.dot(z_win)
+        z_win = (X_win.dot(beta) - y_win) / sigma
+        grad = X_win.T.dot(z_win) / sigma
         # gradient for lose bids
-        z_lose = X_lose.dot(beta) - y_lose
+        z_lose = (X_lose.dot(beta) - y_lose) / sigma
         #grad += -X_lose.T.dot(norm.pdf(z_lose) / norm.cdf(z_lose))
-        grad += -X_lose.T.dot(np.exp(norm.logpdf(z_lose) - norm.logcdf(z_lose)))
+        grad += -X_lose.T.dot(np.exp(norm.logpdf(z_lose) - norm.logcdf(z_lose))) / sigma
         # L2 regularization term
         grad += l2reg * np.append(0, beta[1:]) * 2
         #grad += l2reg * np.append(1, beta[1:]) * 2
@@ -152,14 +152,14 @@ class CensoredLinearModel(BaseRegression):
     @staticmethod
     def loss_function(
             beta: np.ndarray, X_win: csr_matrix, y_win: np.ndarray,
-            X_lose: csr_matrix, y_lose: np.ndarray, l2reg: float) -> float:
-        # TODO: sigma
+            X_lose: csr_matrix, y_lose: np.ndarray,
+            sigma: float, l2reg: float) -> float:
         # loss for win bids
-        z_win = X_win.dot(beta) - y_win
+        z_win = (X_win.dot(beta) - y_win) / sigma
         loss = sum(-norm.logpdf(z_win))
         #loss = sum(-np.log(1/np.sqrt(2*np.pi)) + z_win ** 2 / 2)
         # loss for lose bids
-        z_lose = X_lose.dot(beta) - y_lose
+        z_lose = (X_lose.dot(beta) - y_lose) / sigma
         loss += sum(-norm.logcdf(z_lose))
         # L2 regularization term
         loss += l2reg * sum(beta[1:] ** 2)
@@ -168,8 +168,9 @@ class CensoredLinearModel(BaseRegression):
     def fit(
             self, X_win: csr_matrix, y_win: np.ndarray,
             X_lose: csr_matrix, y_lose: np.ndarray):
+        sigma = np.std(y_win)
         res = minimize(self.loss_function, self.beta,
-            args=(X_win, y_win, X_lose, y_lose, self.l2reg),
+            args=(X_win, y_win, X_lose, y_lose, sigma, self.l2reg),
             method='L-BFGS-B',
             jac=self.gradient,
             tol=self.tol,
