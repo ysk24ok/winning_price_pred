@@ -42,10 +42,11 @@ def read_csv(path: str):
     # read pickled dataframe from a file if exists
     if os.path.exists(path_pickled):
         return utils.load_pickled(path_pickled)
-    df = pd.read_csv(path, index_col=0).astype(feature_type_casting)
+    df = pd.read_csv(path, index_col=0)
+    df = df.astype(feature_type_casting, copy=False)
     # fill NaN in `IP` and `usertag` column with 'null'
-    df['IP'] = df['IP'].fillna('null')
-    df['usertag'] = df['usertag'].fillna('null')
+    df['IP'].fillna('null', inplace=True)
+    df['usertag'].fillna('null', inplace=True)
     # write pickled dataframe to a file
     utils.write_pickled(df, path_pickled)
     return df
