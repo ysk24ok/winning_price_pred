@@ -1,5 +1,4 @@
 import os
-from abc import ABCMeta
 from typing import Tuple
 
 import pandas as pd
@@ -7,17 +6,21 @@ import numpy as np
 from scipy.optimize import minimize
 from scipy.stats import norm
 from scipy.sparse import csr_matrix
+from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.feature_extraction import FeatureHasher
+from sklearn.metrics import r2_score
 
 from . import utils
 
 
-# NOTE: weekday is not included because all rows of training data have same value
 feature_names = (
     'IP', 'Region', 'City', 'AdExchange', 'Domain', 'URL', 'AdSlotId', 'AdSlotWidth',
     'AdSlotHeight', 'AdSlotVisibility', 'AdSlotFormat', 'CreativeID',
-    'hour', 'adid', 'usertag', 'ctr'
+    'weekday', 'hour', 'adid', 'usertag', 'ctr', 'wr'
 )
+#formula = """wr * (IP + Region + City + AdExchange + Domain + URL + AdSlotId +
+#AdSlotWidth + AdSlotHeight + AdSlotVisibility + AdSlotFormat + CreativeID +
+#weekday + hour + adid + usertag + ctr)"""
 
 
 def read_csv(path: str):
@@ -58,35 +61,34 @@ def generate_hashed_X(
     D = filtered_df.to_dict(orient='records')
     del filtered_df
     for d in D:
-        # split `usertag`: '10059,10052,10063,10024,10006,13800,13866,10110'
+        # split `usertag` string
+        # e.x.
+        # {'usertag': '10059,10052,10063'}
+        # will become as follows
+        # {'usertag=10059': 1, 'usertag=10052': 1, 'usertag=10063': 1}
         if 'usertag' in d:
             for usertag in d['usertag'].split(','):
-                # 'usertag=null'の形式でも作られる
                 d['usertag={}'.format(usertag)] = 1
             # delete original `usertag`
             del d['usertag']
     return FeatureHasher().transform(D)
 
 
-class BaseRegression(object, metaclass=ABCMeta):
+class BaseLinearModel(BaseEstimator):
 
     def __init__(
-            self, num_features: int, l2reg: float=0.0, tol: float=1e-3,
+            self, fit_intercept: bool=True, l2reg: float=0.0, tol: float=1e-3,
             options: dict={}):
-        self.num_features = num_features
+        self.fit_intercept = fit_intercept
         self.l2reg = l2reg
-        self.beta = np.zeros(num_features)
         self.tol = tol
         self.options = options
 
-    def initialize_beta(self):
-        self.beta = np.random.rand(self.num_features)
-
-    def predict(self, X):
+    def predict(self, X: csr_matrix):
         return X.dot(self.beta)
 
 
-class LinearModel(BaseRegression):
+class LinearModel(BaseLinearModel, RegressorMixin):
 
     @staticmethod
     def gradient(
@@ -117,7 +119,15 @@ class LinearModel(BaseRegression):
         loss /= (2 * m)
         return loss
 
-    def fit(self, X: csr_matrix, y: np.ndarray):
+    def fit(
+            self, X: csr_matrix, y: np.ndarray,
+            initialize_beta_as_zero: bool=False):
+        n_features = X.shape[1]
+        # initialize beta
+        self.beta = np.random.rand(n_features)
+        if initialize_beta_as_zero is True:
+            self.beta = np.zeros(n_features)
+        # optimize
         res = minimize(self.loss_function, self.beta,
             args=(X, y, self.l2reg),
             method='L-BFGS-B',
@@ -131,7 +141,7 @@ class LinearModel(BaseRegression):
         self.beta = res.x
 
 
-class CensoredLinearModel(BaseRegression):
+class CensoredLinearModel(BaseLinearModel, RegressorMixin):
 
     @staticmethod
     def gradient(
@@ -168,7 +178,14 @@ class CensoredLinearModel(BaseRegression):
 
     def fit(
             self, X_win: csr_matrix, y_win: np.ndarray,
-            X_lose: csr_matrix, y_lose: np.ndarray):
+            X_lose: csr_matrix, y_lose: np.ndarray,
+            initialize_beta_as_zero: bool=False):
+        n_features = X_win.shape[1]
+        # initialize beta
+        self.beta = np.random.rand(n_features)
+        if initialize_beta_as_zero is True:
+            self.beta = np.zeros(n_features)
+        # optimize
         sigma = np.std(y_win)
         res = minimize(self.loss_function, self.beta,
             args=(X_win, y_win, X_lose, y_lose, sigma, self.l2reg),
@@ -209,7 +226,7 @@ if __name__ == '__main__':
 
     print('Reading {} for training ...'.format(tr_data_path))
     tr_all_bids = read_csv(tr_data_path)
-    print('Reading {} for test ...'.format(tr_data_path))
+    print('Reading {} for test ...'.format(te_data_path))
     te_all_bids = read_csv(te_data_path)
     print('Generating win bids for training ...')
     tr_win_bids = tr_all_bids.query("is_win == True")
@@ -219,13 +236,24 @@ if __name__ == '__main__':
     tr_lose_bids = tr_all_bids.query("is_win == False")
     tr_X_lose = utils.add_bias(generate_hashed_X(tr_lose_bids, feature_names))
     tr_y_lose = tr_lose_bids["NewBiddingPrice"].values
+    print('Generating all bids for test ...')
+    te_X = utils.add_bias(generate_hashed_X(te_all_bids, feature_names))
+    te_y = te_all_bids['PayingPrice']
+    te_wr = te_all_bids['wr']
+    print('Fitting LinearModel ...')
+    lm = LinearModel()
+    lm.fit(tr_X_win, tr_y_win)
     print('Fitting CensoredLinearModel ...')
-    num_features = tr_X_win.shape[1]
-    clm = CensoredLinearModel(num_features)
-    clm.initialize_beta()
+    clm = CensoredLinearModel()
     clm.fit(tr_X_win, tr_y_win, tr_X_lose, tr_y_lose)
-    print('Predicting ...')
-    te_X_all = utils.add_bias(generate_hashed_X(te_all_bids, feature_names))
-    te_y_real = te_all_bids['PayingPrice']
-    te_y_pred = clm.predict(te_X_all)
-    print('MSE: {}'.format(mean_squared_error(te_y_real, te_y_pred)))
+    print('Predicting by LinearModel...')
+    print('MSE: {}, r2score: {}'.format(
+        mean_squared_error(te_y, lm.predict(te_X)), lm.score(te_X, te_y)))
+    print('Predicting by CensoredLinearModel...')
+    print('MSE: {}, r2score: {}'.format(
+        mean_squared_error(te_y, clm.predict(te_X)), clm.score(te_X, te_y)))
+    print('Predicting by MixtureModel...')
+    mix = MixtureModel(lm.beta, clm.beta)
+    te_y_pred = mix.predict(te_X, te_wr)
+    print('MSE: {}, r2score: {}'.format(
+        mean_squared_error(te_y, te_y_pred), r2_score(te_y, te_y_pred)))
