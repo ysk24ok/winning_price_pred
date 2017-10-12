@@ -8,7 +8,7 @@ from scipy.stats import norm
 from scipy.sparse import csr_matrix
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.feature_extraction import FeatureHasher
-from sklearn.metrics import r2_score
+from sklearn.metrics import make_scorer, mean_squared_error, r2_score
 
 from . import utils
 
@@ -21,6 +21,8 @@ feature_names = (
 #formula = """wr * (IP + Region + City + AdExchange + Domain + URL + AdSlotId +
 #AdSlotWidth + AdSlotHeight + AdSlotVisibility + AdSlotFormat + CreativeID +
 #weekday + hour + adid + usertag + ctr)"""
+
+mse = make_scorer(mean_squared_error, greater_is_better=False)
 
 
 def read_csv(path: str):
@@ -56,7 +58,8 @@ def read_csv(path: str):
 
 
 def generate_hashed_X(
-        df: pd.core.frame.DataFrame, feature_names: Tuple[str]) -> csr_matrix:
+        df: pd.core.frame.DataFrame, feature_names: Tuple[str],
+        n_features: int=2**20-1, add_bias: bool=True) -> csr_matrix:
     filtered_df = df.filter(items=feature_names)
     D = filtered_df.to_dict(orient='records')
     del filtered_df
@@ -71,15 +74,16 @@ def generate_hashed_X(
                 d['usertag={}'.format(usertag)] = 1
             # delete original `usertag`
             del d['usertag']
-    return FeatureHasher().transform(D)
+    X = FeatureHasher(n_features=n_features).transform(D)
+    if add_bias:
+        X = utils.add_bias(X)
+    return X
 
 
 class BaseLinearModel(BaseEstimator):
 
     def __init__(
-            self, fit_intercept: bool=True, l2reg: float=0.0, tol: float=1e-3,
-            options: dict={}):
-        self.fit_intercept = fit_intercept
+            self, l2reg: float=0.0, tol: float=1e-6, options: dict={}):
         self.l2reg = l2reg
         self.tol = tol
         self.options = options
@@ -98,9 +102,7 @@ class LinearModel(BaseLinearModel, RegressorMixin):
         z = X.dot(beta) - y
         grad = X.T.dot(z)
         # L2 regularization term
-        # weight for bias term is not included
         grad += l2reg * np.append(0, beta[1:])
-        #grad += l2reg * np.append(1, beta[1:])
         grad /= m
         return grad
 
@@ -114,7 +116,6 @@ class LinearModel(BaseLinearModel, RegressorMixin):
         #loss = sum(-norm.logpdf(z))
         loss = sum(z ** 2)
         # L2 regularization term
-        # weight for bias term is not included
         loss += l2reg * sum(beta[1:] ** 2)
         loss /= (2 * m)
         return loss
@@ -156,8 +157,7 @@ class CensoredLinearModel(BaseLinearModel, RegressorMixin):
         #grad += -X_lose.T.dot(norm.pdf(z_lose) / norm.cdf(z_lose))
         grad += -X_lose.T.dot(np.exp(norm.logpdf(z_lose) - norm.logcdf(z_lose))) / sigma
         # L2 regularization term
-        grad += l2reg * np.append(0, beta[1:]) * 2
-        #grad += l2reg * np.append(1, beta[1:]) * 2
+        grad += l2reg * np.append(0, beta[1:])
         return grad
 
     @staticmethod
@@ -173,7 +173,7 @@ class CensoredLinearModel(BaseLinearModel, RegressorMixin):
         z_lose = (X_lose.dot(beta) - y_lose) / sigma
         loss += sum(-norm.logcdf(z_lose))
         # L2 regularization term
-        loss += l2reg * sum(beta[1:] ** 2)
+        loss += l2reg * sum(beta[1:] ** 2) / 2
         return loss
 
     def fit(
@@ -210,10 +210,87 @@ class MixtureModel(object):
         return wr * X.dot(self.beta_lm) + (1 - wr) * X.dot(self.beta_clm)
 
 
+def simulation(
+        tr_data_path: str, te_data_path: str, features_names: Tuple[str],
+        l2reg_for_lm: float=0.0, l2reg_for_clm: float=0.0,
+        n_features=2**20-1, add_bias: bool=True,
+        initialize_beta_as_zero: bool=False):
+    print('Reading {} for training ...'.format(tr_data_path))
+    tr_all_bids = read_csv(tr_data_path)
+    print('Reading {} for test ...'.format(te_data_path))
+    te_all_bids = read_csv(te_data_path)
+    print('Generating X_win for training ...')
+    tr_win_bids = tr_all_bids.query("is_win == True")
+    tr_X_win = generate_hashed_X(
+        tr_win_bids, feature_names, n_features=n_features, add_bias=add_bias)
+    tr_y_win = tr_win_bids["PayingPrice"].values
+    print('Generating X_lose for training ...')
+    tr_lose_bids = tr_all_bids.query("is_win == False")
+    tr_X_lose = generate_hashed_X(
+        tr_lose_bids, feature_names, n_features=n_features, add_bias=add_bias)
+    tr_y_lose = tr_lose_bids["NewBiddingPrice"].values
+    print('Generating X_all for test ...')
+    te_X_all = generate_hashed_X(
+        te_all_bids, feature_names, n_features=n_features, add_bias=add_bias)
+    te_y_all = te_all_bids['PayingPrice']
+    te_wr_all = te_all_bids['wr']
+    print('Generating X_win for test ...')
+    te_win_bids = te_all_bids.query("is_win == True")
+    te_X_win = generate_hashed_X(
+        te_win_bids, feature_names, n_features=n_features, add_bias=add_bias)
+    te_y_win = te_win_bids["PayingPrice"].values
+    te_wr_win = te_win_bids['wr']
+    print('Generating X_lose for test ...')
+    te_lose_bids = te_all_bids.query("is_win == False")
+    te_X_lose = generate_hashed_X(
+        te_lose_bids, feature_names, n_features=n_features, add_bias=add_bias)
+    te_y_lose = te_lose_bids["PayingPrice"].values
+    te_wr_lose = te_lose_bids['wr']
+    del tr_all_bids
+    del tr_win_bids
+    del tr_lose_bids
+    #del te_all_bids
+    del te_win_bids
+    del te_lose_bids
+    print('Fitting LinearModel (l2reg={}) ...'.format(l2reg_for_lm))
+    lm = LinearModel(l2reg=l2reg_for_lm)
+    lm.fit(tr_X_win, tr_y_win, initialize_beta_as_zero=initialize_beta_as_zero)
+    mse_lm_all = -mse(lm, te_X_all, te_y_all)
+    mse_lm_win = -mse(lm, te_X_win, te_y_win)
+    mse_lm_lose = -mse(lm, te_X_lose, te_y_lose)
+    te_all_bids['PredPriceLM'] = lm.predict(te_X_all)
+    print('MSE on all: {}, r2score on all: {}'.format(mse_lm_all, lm.score(te_X_all, te_y_all)))
+    print('MSE on win: {}, r2score on win: {}'.format(mse_lm_win, lm.score(te_X_win, te_y_win)))
+    print('MSE on lose: {}, r2score on lose: {}'.format(mse_lm_lose, lm.score(te_X_lose, te_y_lose)))
+    print('Fitting CensoredLinearModel (l2reg={}) ...'.format(l2reg_for_clm))
+    clm = CensoredLinearModel(l2reg=l2reg_for_clm)
+    clm.fit(tr_X_win, tr_y_win, tr_X_lose, tr_y_lose,
+        initialize_beta_as_zero=initialize_beta_as_zero)
+    mse_clm_all = -mse(clm, te_X_all, te_y_all)
+    mse_clm_win = -mse(clm, te_X_win, te_y_win)
+    mse_clm_lose = -mse(clm, te_X_lose, te_y_lose)
+    te_all_bids['PredPriceCLM'] = clm.predict(te_X_all)
+    print('MSE on all: {}, r2score on all: {}'.format(mse_clm_all, clm.score(te_X_all, te_y_all)))
+    print('MSE on win: {}, r2score on win: {}'.format(mse_clm_win, clm.score(te_X_win, te_y_win)))
+    print('MSE on lose: {}, r2score on lose: {}'.format(mse_clm_lose, clm.score(te_X_lose, te_y_lose)))
+    print('Predicting by MixtureModel...')
+    mix = MixtureModel(lm.beta, clm.beta)
+    te_y_all_pred = mix.predict(te_X_all, te_wr_all)
+    te_y_win_pred = mix.predict(te_X_win, te_wr_win)
+    te_y_lose_pred = mix.predict(te_X_lose, te_wr_lose)
+    mse_mix_all = mean_squared_error(te_y_all, te_y_all_pred)
+    mse_mix_win = mean_squared_error(te_y_win, te_y_win_pred)
+    mse_mix_lose = mean_squared_error(te_y_lose, te_y_lose_pred)
+    te_all_bids['PredPriceMix'] = te_y_all_pred
+    print('MSE on all: {}, r2score on all: {}'.format(mse_mix_all, r2_score(te_y_all, te_y_all_pred)))
+    print('MSE on win: {}, r2score on win: {}'.format(mse_mix_win, r2_score(te_y_win, te_y_win_pred)))
+    print('MSE on lose: {}, r2score on lose: {}'.format(mse_mix_lose, r2_score(te_y_lose, te_y_lose_pred)))
+    return te_all_bids, [mse_lm_all, mse_lm_win, mse_lm_lose, mse_clm_all, mse_clm_win, mse_clm_lose, mse_mix_all, mse_mix_win, mse_mix_lose]
+
+
 if __name__ == '__main__':
     import sys
     from datetime import datetime, timedelta
-    from sklearn.metrics import mean_squared_error
 
     if len(sys.argv) != 2:
         sys.exit('Usage: python -m winning_price_pred.censored_reg 20130606')
@@ -224,36 +301,10 @@ if __name__ == '__main__':
     tr_data_path = '{}/data/bidimpclk.{}.sim2.csv'.format(d, tr_yyyymmdd)
     te_data_path = '{}/data/bidimpclk.{}.sim2.csv'.format(d, te_yyyymmdd)
 
-    print('Reading {} for training ...'.format(tr_data_path))
-    tr_all_bids = read_csv(tr_data_path)
-    print('Reading {} for test ...'.format(te_data_path))
-    te_all_bids = read_csv(te_data_path)
-    print('Generating win bids for training ...')
-    tr_win_bids = tr_all_bids.query("is_win == True")
-    tr_X_win = utils.add_bias(generate_hashed_X(tr_win_bids, feature_names))
-    tr_y_win = tr_win_bids["PayingPrice"].values
-    print('Generating lose bids for training ...')
-    tr_lose_bids = tr_all_bids.query("is_win == False")
-    tr_X_lose = utils.add_bias(generate_hashed_X(tr_lose_bids, feature_names))
-    tr_y_lose = tr_lose_bids["NewBiddingPrice"].values
-    print('Generating all bids for test ...')
-    te_X = utils.add_bias(generate_hashed_X(te_all_bids, feature_names))
-    te_y = te_all_bids['PayingPrice']
-    te_wr = te_all_bids['wr']
-    print('Fitting LinearModel ...')
-    lm = LinearModel()
-    lm.fit(tr_X_win, tr_y_win)
-    print('Fitting CensoredLinearModel ...')
-    clm = CensoredLinearModel()
-    clm.fit(tr_X_win, tr_y_win, tr_X_lose, tr_y_lose)
-    print('Predicting by LinearModel...')
-    print('MSE: {}, r2score: {}'.format(
-        mean_squared_error(te_y, lm.predict(te_X)), lm.score(te_X, te_y)))
-    print('Predicting by CensoredLinearModel...')
-    print('MSE: {}, r2score: {}'.format(
-        mean_squared_error(te_y, clm.predict(te_X)), clm.score(te_X, te_y)))
-    print('Predicting by MixtureModel...')
-    mix = MixtureModel(lm.beta, clm.beta)
-    te_y_pred = mix.predict(te_X, te_wr)
-    print('MSE: {}, r2score: {}'.format(
-        mean_squared_error(te_y, te_y_pred), r2_score(te_y, te_y_pred)))
+    pd.set_option('display.width', 160)
+
+    df, mses = simulation(
+        tr_data_path, te_data_path, feature_names,
+        l2reg_for_lm=100, l2reg_for_clm=100)
+    print()
+    print(df.head(n=20).filter(['BiddingPrice', 'NewBiddingPrice', 'PayingPrice', 'is_win', 'PredPriceLM', 'PredPriceCLM', 'PredPriceMix']))
