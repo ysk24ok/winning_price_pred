@@ -24,6 +24,7 @@ feature_names = (
 
 mse = make_scorer(mean_squared_error, greater_is_better=False)
 
+vectorized_f = np.vectorize(lambda w, l, is_win: w if is_win is True else l)
 
 def read_csv(path: str):
     """
@@ -48,10 +49,14 @@ def read_csv(path: str):
     if os.path.exists(path_pickled):
         return utils.load_pickled(path_pickled)
     df = pd.read_csv(path, index_col=0)
-    df = df.astype(feature_type_casting, copy=False)
-    # fill NaN in `IP` and `usertag` column with 'null'
-    df['IP'].fillna('null', inplace=True)
-    df['usertag'].fillna('null', inplace=True)
+    for colname, type_to_cast in feature_type_casting.items():
+        if colname in df.columns:
+            df[colname] = df[colname].astype(type_to_cast, copy=False)
+    # fill NaN in `IP` and `usertag` column with 'null' if exists
+    if 'IP' in df.columns:
+        df['IP'].fillna('null', inplace=True)
+    if 'usertag' in df.columns:
+        df['usertag'].fillna('null', inplace=True)
     # write pickled dataframe to a file
     utils.write_pickled(df, path_pickled)
     return df
@@ -144,51 +149,50 @@ class LinearModel(BaseLinearModel, RegressorMixin):
 
 class CensoredLinearModel(BaseLinearModel, RegressorMixin):
 
+    def __init__(self, is_win: np.ndarray, **kargs):
+        self.is_win = is_win
+        super(CensoredLinearModel, self).__init__(**kargs)
+
     @staticmethod
     def gradient(
-            beta: np.ndarray, X_win: csr_matrix, y_win: np.ndarray,
-            X_lose: csr_matrix, y_lose: np.ndarray,
-            sigma: float, l2reg: float) -> float:
-        # gradient for win bids
-        z_win = (X_win.dot(beta) - y_win) / sigma
-        grad = X_win.T.dot(z_win) / sigma
-        # gradient for lose bids
-        z_lose = (X_lose.dot(beta) - y_lose) / sigma
-        #grad += -X_lose.T.dot(norm.pdf(z_lose) / norm.cdf(z_lose))
-        grad += -X_lose.T.dot(np.exp(norm.logpdf(z_lose) - norm.logcdf(z_lose))) / sigma
+            beta: np.ndarray, X: csr_matrix, y: np.ndarray,
+            is_win: np.ndarray, f, sigma: float, l2reg: float) -> float:
+        z = (X.dot(beta) - y) / sigma
+        z_lose = -(np.exp(norm.logpdf(z) - norm.logcdf(z)))
+        #z_lose = -(norm.pdf(z) / norm.cdf(z))
+        z = f(z, z_lose, is_win)
+        grad = X.T.dot(z) / sigma
         # L2 regularization term
         grad += l2reg * np.append(0, beta[1:])
         return grad
 
     @staticmethod
     def loss_function(
-            beta: np.ndarray, X_win: csr_matrix, y_win: np.ndarray,
-            X_lose: csr_matrix, y_lose: np.ndarray,
-            sigma: float, l2reg: float) -> float:
+            beta: np.ndarray, X: csr_matrix, y: np.ndarray,
+            is_win: np.ndarray, f, sigma: float, l2reg: float) -> float:
+        z = (X.dot(beta) - y) / sigma
         # loss for win bids
-        z_win = (X_win.dot(beta) - y_win) / sigma
-        loss = sum(-norm.logpdf(z_win))
-        #loss = sum(-np.log(1/np.sqrt(2*np.pi)) + z_win ** 2 / 2)
+        z_win = -norm.logpdf(z)
+        #z_win = -(np.log(1/np.sqrt(2*np.pi)) - z**2/2)
         # loss for lose bids
-        z_lose = (X_lose.dot(beta) - y_lose) / sigma
-        loss += sum(-norm.logcdf(z_lose))
+        z_lose = -norm.logcdf(z)
+        loss = sum(f(z_win, z_lose, is_win))
         # L2 regularization term
         loss += l2reg * sum(beta[1:] ** 2) / 2
         return loss
 
     def fit(
-            self, X_win: csr_matrix, y_win: np.ndarray,
-            X_lose: csr_matrix, y_lose: np.ndarray,
+            self, X: csr_matrix, y: np.ndarray,
             initialize_beta_as_zero: bool=False):
-        n_features = X_win.shape[1]
+        n_features = X.shape[1]
         # initialize beta
         self.beta = np.random.rand(n_features)
         if initialize_beta_as_zero is True:
             self.beta = np.zeros(n_features)
         # optimize
-        sigma = np.std(y_win)
+        sigma = np.std(y[self.is_win])
         res = minimize(self.loss_function, self.beta,
-            args=(X_win, y_win, X_lose, y_lose, sigma, self.l2reg),
+            args=(X, y, self.is_win, vectorized_f, sigma, self.l2reg),
             method='L-BFGS-B',
             jac=self.gradient,
             tol=self.tol,
@@ -219,36 +223,35 @@ def simulation(
     tr_all_bids = read_csv(tr_data_path)
     print('Reading {} for test ...'.format(te_data_path))
     te_all_bids = read_csv(te_data_path)
+    print('Generating X_all for training ...')
+    tr_X_all = generate_hashed_X(
+        tr_all_bids, feature_names, n_features=n_features, add_bias=add_bias)
+    tr_y_all = tr_all_bids['PayingPrice'].values
+    tr_is_win = tr_all_bids['is_win']
     print('Generating X_win for training ...')
-    tr_win_bids = tr_all_bids.query("is_win == True")
+    tr_win_bids = tr_all_bids.query('is_win == True')
     tr_X_win = generate_hashed_X(
         tr_win_bids, feature_names, n_features=n_features, add_bias=add_bias)
-    tr_y_win = tr_win_bids["PayingPrice"].values
-    print('Generating X_lose for training ...')
-    tr_lose_bids = tr_all_bids.query("is_win == False")
-    tr_X_lose = generate_hashed_X(
-        tr_lose_bids, feature_names, n_features=n_features, add_bias=add_bias)
-    tr_y_lose = tr_lose_bids["NewBiddingPrice"].values
+    tr_y_win = tr_win_bids['PayingPrice'].values
     print('Generating X_all for test ...')
     te_X_all = generate_hashed_X(
         te_all_bids, feature_names, n_features=n_features, add_bias=add_bias)
     te_y_all = te_all_bids['PayingPrice']
     te_wr_all = te_all_bids['wr']
     print('Generating X_win for test ...')
-    te_win_bids = te_all_bids.query("is_win == True")
+    te_win_bids = te_all_bids.query('is_win == True')
     te_X_win = generate_hashed_X(
         te_win_bids, feature_names, n_features=n_features, add_bias=add_bias)
-    te_y_win = te_win_bids["PayingPrice"].values
+    te_y_win = te_win_bids['PayingPrice'].values
     te_wr_win = te_win_bids['wr']
     print('Generating X_lose for test ...')
-    te_lose_bids = te_all_bids.query("is_win == False")
+    te_lose_bids = te_all_bids.query('is_win == False')
     te_X_lose = generate_hashed_X(
         te_lose_bids, feature_names, n_features=n_features, add_bias=add_bias)
-    te_y_lose = te_lose_bids["PayingPrice"].values
+    te_y_lose = te_lose_bids['PayingPrice'].values
     te_wr_lose = te_lose_bids['wr']
     del tr_all_bids
     del tr_win_bids
-    del tr_lose_bids
     #del te_all_bids
     del te_win_bids
     del te_lose_bids
@@ -263,9 +266,8 @@ def simulation(
     print('MSE on win: {}, r2score on win: {}'.format(mse_lm_win, lm.score(te_X_win, te_y_win)))
     print('MSE on lose: {}, r2score on lose: {}'.format(mse_lm_lose, lm.score(te_X_lose, te_y_lose)))
     print('Fitting CensoredLinearModel (l2reg={}) ...'.format(l2reg_for_clm))
-    clm = CensoredLinearModel(l2reg=l2reg_for_clm)
-    clm.fit(tr_X_win, tr_y_win, tr_X_lose, tr_y_lose,
-        initialize_beta_as_zero=initialize_beta_as_zero)
+    clm = CensoredLinearModel(tr_is_win, l2reg=l2reg_for_clm)
+    clm.fit(tr_X_all, tr_y_all, initialize_beta_as_zero=initialize_beta_as_zero)
     mse_clm_all = -mse(clm, te_X_all, te_y_all)
     mse_clm_win = -mse(clm, te_X_win, te_y_win)
     mse_clm_lose = -mse(clm, te_X_lose, te_y_lose)
