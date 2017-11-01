@@ -62,12 +62,10 @@ def read_csv(path: str):
     return df
 
 
-def generate_hashed_X(
+def generate_X(
         df: pd.core.frame.DataFrame, feature_names: Tuple[str],
-        n_features: int=2**20-1, add_bias: bool=True) -> csr_matrix:
-    filtered_df = df.filter(items=feature_names)
-    D = filtered_df.to_dict(orient='records')
-    del filtered_df
+        n_features: int=2**20, add_bias: bool=True) -> csr_matrix:
+    D = df.filter(items=feature_names).to_dict(orient='records')
     for d in D:
         # split `usertag` string
         # e.x.
@@ -79,9 +77,12 @@ def generate_hashed_X(
                 d['usertag={}'.format(usertag)] = 1
             # delete original `usertag`
             del d['usertag']
-    X = FeatureHasher(n_features=n_features).transform(D)
-    if add_bias:
+    if add_bias is True:
+        X = FeatureHasher(n_features=n_features-1).transform(D)
         X = utils.add_bias(X)
+    else:
+        X = FeatureHasher(n_features=n_features).transform(D)
+    del D
     return X
 
 
@@ -224,29 +225,29 @@ def simulation(
     print('Reading {} for test ...'.format(te_data_path))
     te_all_bids = read_csv(te_data_path)
     print('Generating X_all for training ...')
-    tr_X_all = generate_hashed_X(
+    tr_X_all = generate_X(
         tr_all_bids, feature_names, n_features=n_features, add_bias=add_bias)
     tr_y_all = tr_all_bids['PayingPrice'].values
     tr_is_win = tr_all_bids['is_win']
     print('Generating X_win for training ...')
     tr_win_bids = tr_all_bids.query('is_win == True')
-    tr_X_win = generate_hashed_X(
+    tr_X_win = generate_X(
         tr_win_bids, feature_names, n_features=n_features, add_bias=add_bias)
     tr_y_win = tr_win_bids['PayingPrice'].values
     print('Generating X_all for test ...')
-    te_X_all = generate_hashed_X(
+    te_X_all = generate_X(
         te_all_bids, feature_names, n_features=n_features, add_bias=add_bias)
     te_y_all = te_all_bids['PayingPrice']
     te_wr_all = te_all_bids['wr']
     print('Generating X_win for test ...')
     te_win_bids = te_all_bids.query('is_win == True')
-    te_X_win = generate_hashed_X(
+    te_X_win = generate_X(
         te_win_bids, feature_names, n_features=n_features, add_bias=add_bias)
     te_y_win = te_win_bids['PayingPrice'].values
     te_wr_win = te_win_bids['wr']
     print('Generating X_lose for test ...')
     te_lose_bids = te_all_bids.query('is_win == False')
-    te_X_lose = generate_hashed_X(
+    te_X_lose = generate_X(
         te_lose_bids, feature_names, n_features=n_features, add_bias=add_bias)
     te_y_lose = te_lose_bids['PayingPrice'].values
     te_wr_lose = te_lose_bids['wr']

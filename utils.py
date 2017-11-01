@@ -6,7 +6,7 @@ from scipy.sparse import csr_matrix, hstack
 def add_bias(X):
     m = X.shape[0]
     if isinstance(X, csr_matrix):
-        return hstack([csr_matrix(np.ones((m, 1))), X])
+        return hstack([csr_matrix(np.ones((m, 1))), X]).tocsr()
     elif isinstance(X, np.matrix):
         return np.hstack((np.ones((m, 1)), X))
     else:

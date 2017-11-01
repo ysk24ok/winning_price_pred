@@ -19,7 +19,7 @@ class TestLinearModel(TestCase):
         feature_names = ('Domain', 'AdSlotWidth', 'AdSlotHeight')
         df = load_data_as_df('sample.csv')
         is_win = df['is_win']
-        self.X = testee.generate_hashed_X(df[is_win], feature_names, n_features=50)
+        self.X = testee.generate_X(df[is_win], feature_names, n_features=50)
         self.y = df['BiddingPrice'][is_win].values
         self.n_features = self.X.shape[1]
 
@@ -44,7 +44,7 @@ class TestCensoredLinearModel(TestCase):
         feature_names = ('Domain', 'AdSlotWidth', 'AdSlotHeight')
         df = load_data_as_df('sample.csv')
         self.is_win = df['is_win']
-        self.X = testee.generate_hashed_X(df, feature_names, n_features=50)
+        self.X = testee.generate_X(df, feature_names, n_features=50)
         self.y = testee.vectorized_f(
             df['NewBiddingPrice'], df['PayingPrice'], self.is_win)
         self.n_features = self.X.shape[1]
