@@ -48,47 +48,47 @@ and the model will be evaluated using `bidimpclk.20130607.sim2.csv`.
 ```sh
 (venvdir) $ cd ..
 (venvdir) $ python -m winning_price_pred.censored_reg 20130606
-Reading /tmp/winning_price_pred/data/bidimpclk.20130606.sim2.csv for training ...
-Reading /tmp/winning_price_pred/data/bidimpclk.20130607.sim2.csv for test ...
+Reading /mnt/data/nishioka/winning_price_pred/data/bidimpclk.20130606.sim2.csv for training ...
+Reading /mnt/data/nishioka/winning_price_pred/data/bidimpclk.20130607.sim2.csv for test ...
+Generating X_all for training ...
 Generating X_win for training ...
-Generating X_lose for training ...
 Generating X_all for test ...
 Generating X_win for test ...
 Generating X_lose for test ...
-Fitting LinearModel (l2reg=100) ...
-MSE on all: 3292.466036216859, r2score on all: 0.06949671329137164
-MSE on win: 729.1126283627675, r2score on win: 0.229665020595324
-MSE on lose: 17160.729472123054, r2score on lose: -7.64291321674747
-Fitting CensoredLinearModel (l2reg=100) ...
-MSE on all: 2597.088240297978, r2score on all: 0.26602154224608476
-MSE on win: 880.1973241496042, r2score on win: 0.07003834360488337
-MSE on lose: 11885.817388181165, r2score on lose: -4.986230851260474
+Fitting LinearModel (l2reg=10) ...
+MSE on all: 3410.568823079685, r2score on all: 0.036118986646214934
+MSE on win: 808.4110845121388, r2score on win: 0.1458832121224426
+MSE on lose: 17488.77158266221, r2score on lose: -7.808129940047861
+Fitting CensoredLinearModel (l2reg=1) ...
+MSE on all: 2080.861078965126, r2score on all: 0.41191555148556097
+MSE on win: 1007.2580078911672, r2score on win: -0.06420605895469134
+MSE on lose: 7889.272111806644, r2score on lose: -2.9733913594067714
 Predicting by MixtureModel...
-MSE on all: 2885.042146719021, r2score on all: 0.1846411867927471
-MSE on win: 710.6664005538678, r2score on win: 0.249154155698046
-MSE on lose: 14648.857297633978, r2score on lose: -6.377821703537689
+MSE on all: 2505.285576316084, r2score on all: 0.2919664357162428
+MSE on win: 857.4402981611596, r2score on win: 0.09408199950134655
+MSE on lose: 11420.463775719254, r2score on lose: -4.751857895603674
 
     BiddingPrice  NewBiddingPrice  PayingPrice is_win  PredPriceLM  PredPriceCLM  PredPriceMix
-1            300            150.0          121   True    55.908983     68.553728     57.709246
-2            300            150.0           94   True    46.488827     58.084333     46.892786
-3            238            119.0           36   True    22.919368     68.662003     25.103462
-4            300            150.0           44   True    20.929469     52.556243     21.245026
-5            238            119.0          126  False    65.138778     86.994898     73.729136
-6            227            113.5          154  False    64.546913     69.410512     64.926956
-7            300            150.0           46   True    46.517580     59.659691     46.808330
-8            238            119.0           65   True    27.634903     55.535481     30.020536
-9            300            150.0           43   True    38.192278     61.344259     38.451309
-10           300            150.0            9   True    13.173031     59.828159     14.484799
-11           238            119.0          111   True    42.302315     82.568356     43.673405
-12           300            150.0           44   True    21.995282     46.638464     22.213258
-13           238            119.0           92   True    47.762757     61.379385     49.672216
-14           238            119.0           57   True    57.391411     72.014857     61.076385
-15           238            119.0           34   True    56.841204     69.548098     60.502307
-16           238            119.0           46   True    26.281604     51.343687     27.111481
-17           238            119.0           90   True    39.592026     66.175959     41.497275
-18           300            150.0           17   True    31.644904     51.268748     31.723212
-19           227            113.5           31   True    32.738627     55.368265     33.187611
-20           300            150.0          106   True    74.008133     79.877595     74.197638
+1            300            150.0          121   True    58.811314     80.684565     61.925462
+2            300            150.0           94   True    44.387071     57.347588     44.838584
+3            238            119.0           36   True    24.715549     35.880261     25.248636
+4            300            150.0           44   True    21.888623     32.380057     21.993302
+5            238            119.0          126  False    74.805937    110.473094     88.824603
+6            227            113.5          154  False    66.329831     71.406766     66.726544
+7            300            150.0           46   True    43.854636     56.200373     44.127768
+8            238            119.0           65   True    27.216636     42.544953     28.527280
+9            300            150.0           43   True    36.946535     47.412197     37.063628
+10           300            150.0            9   True     7.403345     35.392005      8.190282
+11           238            119.0          111   True    47.391180     48.556372     47.430856
+12           300            150.0           44   True    27.149674     33.069704     27.202039
+13           238            119.0           92   True    48.561989     65.341883     50.915033
+14           238            119.0           57   True    50.646631     94.628123     61.729563
+15           238            119.0           34   True    59.555921     95.535899     69.922451
+16           238            119.0           46   True    19.044949     37.400270     19.652746
+17           238            119.0           90   True    41.029389     50.631818     41.717587
+18           300            150.0           17   True    29.265943     37.213748     29.297658
+19           227            113.5           31   True    30.222903     29.959403     30.217675
+20           300            150.0          106   True    70.320781     72.004427     70.375140
 ```
 
 # Disclaimer

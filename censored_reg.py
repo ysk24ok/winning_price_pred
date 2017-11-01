@@ -308,6 +308,6 @@ if __name__ == '__main__':
 
     df, mses = simulation(
         tr_data_path, te_data_path, feature_names,
-        l2reg_for_lm=100, l2reg_for_clm=100)
+        l2reg_for_lm=10, l2reg_for_clm=1)
     print()
     print(df.head(n=20).filter(['BiddingPrice', 'NewBiddingPrice', 'PayingPrice', 'is_win', 'PredPriceLM', 'PredPriceCLM', 'PredPriceMix']))
