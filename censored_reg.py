@@ -99,9 +99,8 @@ class BaseLinearModel(BaseEstimator):
 
 class LinearModel(BaseLinearModel, RegressorMixin):
 
-    @staticmethod
     def gradient(
-            beta: np.ndarray, X: csr_matrix, y: np.ndarray,
+            self, beta: np.ndarray, X: csr_matrix, y: np.ndarray,
             l2reg: float) -> np.ndarray:
         m = X.shape[0]
         z = X.dot(beta) - y
@@ -111,9 +110,8 @@ class LinearModel(BaseLinearModel, RegressorMixin):
         grad /= m
         return grad
 
-    @staticmethod
     def loss_function(
-            beta: np.ndarray, X: csr_matrix, y: np.ndarray,
+            self, beta: np.ndarray, X: csr_matrix, y: np.ndarray,
             l2reg: float) -> float:
         m = X.shape[0]
         # squared loss
@@ -149,9 +147,8 @@ class LinearModel(BaseLinearModel, RegressorMixin):
 
 class CensoredLinearModel(BaseLinearModel, RegressorMixin):
 
-    @staticmethod
     def gradient(
-            beta: np.ndarray, X: csr_matrix, y: np.ndarray,
+            self, beta: np.ndarray, X: csr_matrix, y: np.ndarray,
             is_win: np.ndarray, f, sigma: float, l2reg: float) -> float:
         z = (X.dot(beta) - y) / sigma
         z_lose = -(np.exp(norm.logpdf(z) - norm.logcdf(z)))
@@ -162,9 +159,8 @@ class CensoredLinearModel(BaseLinearModel, RegressorMixin):
         grad += l2reg * np.append(0, beta[1:])
         return grad
 
-    @staticmethod
     def loss_function(
-            beta: np.ndarray, X: csr_matrix, y: np.ndarray,
+            self, beta: np.ndarray, X: csr_matrix, y: np.ndarray,
             is_win: np.ndarray, f, sigma: float, l2reg: float) -> float:
         z = (X.dot(beta) - y) / sigma
         # loss for win bids
