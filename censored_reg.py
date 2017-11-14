@@ -227,8 +227,9 @@ def simulation(
     print('Generating X_all for training ...')
     tr_X_all = generate_X(
         tr_all_bids, feature_names, n_features=n_features, add_bias=add_bias)
-    tr_y_all = tr_all_bids['PayingPrice'].values
     tr_is_win = tr_all_bids['is_win']
+    tr_y_all = vectorized_f(
+        tr_all_bids['PayingPrice'], tr_all_bids['NewBiddingPrice'], tr_is_win)
     print('Generating X_win for training ...')
     tr_win_bids = tr_all_bids.query('is_win == True')
     tr_X_win = generate_X(
