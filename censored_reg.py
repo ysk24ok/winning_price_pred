@@ -218,7 +218,7 @@ class MixtureModel(object):
 def simulation(
         tr_data_path: str, te_data_path: str, features_names: Tuple[str],
         l2reg_for_lm: float=0.0, l2reg_for_clm: float=0.0,
-        n_features=2**20-1, add_bias: bool=True,
+        n_features=2**20, add_bias: bool=True,
         initialize_beta_as_zero: bool=False):
     print('Reading {} for training ...'.format(tr_data_path))
     tr_all_bids = read_csv(tr_data_path)
