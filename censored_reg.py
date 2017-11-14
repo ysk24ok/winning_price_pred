@@ -88,8 +88,7 @@ def generate_X(
 
 class BaseLinearModel(BaseEstimator):
 
-    def __init__(
-            self, l2reg: float=0.0, tol: float=1e-6, options: dict={}):
+    def __init__(self, l2reg: float=0.0, tol: float=1e-6, options: dict={}):
         self.l2reg = l2reg
         self.tol = tol
         self.options = options
@@ -150,10 +149,6 @@ class LinearModel(BaseLinearModel, RegressorMixin):
 
 class CensoredLinearModel(BaseLinearModel, RegressorMixin):
 
-    def __init__(self, is_win: np.ndarray, **kargs):
-        self.is_win = is_win
-        super(CensoredLinearModel, self).__init__(**kargs)
-
     @staticmethod
     def gradient(
             beta: np.ndarray, X: csr_matrix, y: np.ndarray,
@@ -183,17 +178,18 @@ class CensoredLinearModel(BaseLinearModel, RegressorMixin):
         return loss
 
     def fit(
-            self, X: csr_matrix, y: np.ndarray,
+            self, X: csr_matrix, y: np.ndarray, is_win: np.ndarray,
             initialize_beta_as_zero: bool=False):
         n_features = X.shape[1]
+        assert len(y) == len(is_win), 'y: {}, is_win: {}'.format(len(y), len(is_win))
         # initialize beta
         self.beta = np.random.rand(n_features)
         if initialize_beta_as_zero is True:
             self.beta = np.zeros(n_features)
         # optimize
-        sigma = np.std(y[self.is_win])
+        sigma = np.std(y[is_win])
         res = minimize(self.loss_function, self.beta,
-            args=(X, y, self.is_win, vectorized_f, sigma, self.l2reg),
+            args=(X, y, is_win, vectorized_f, sigma, self.l2reg),
             method='L-BFGS-B',
             jac=self.gradient,
             tol=self.tol,
@@ -268,8 +264,8 @@ def simulation(
     print('MSE on win: {}, r2score on win: {}'.format(mse_lm_win, lm.score(te_X_win, te_y_win)))
     print('MSE on lose: {}, r2score on lose: {}'.format(mse_lm_lose, lm.score(te_X_lose, te_y_lose)))
     print('Fitting CensoredLinearModel (l2reg={}) ...'.format(l2reg_for_clm))
-    clm = CensoredLinearModel(tr_is_win, l2reg=l2reg_for_clm)
-    clm.fit(tr_X_all, tr_y_all, initialize_beta_as_zero=initialize_beta_as_zero)
+    clm = CensoredLinearModel(l2reg=l2reg_for_clm)
+    clm.fit(tr_X_all, tr_y_all, tr_is_win, initialize_beta_as_zero=initialize_beta_as_zero)
     mse_clm_all = -mse(clm, te_X_all, te_y_all)
     mse_clm_win = -mse(clm, te_X_win, te_y_win)
     mse_clm_lose = -mse(clm, te_X_lose, te_y_lose)

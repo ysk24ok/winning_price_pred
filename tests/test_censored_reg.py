@@ -28,14 +28,14 @@ class TestLinearModel(TestCase):
         init_beta = np.random.rand(self.n_features)
         got = check_grad(
             lm.loss_function, lm.gradient, init_beta, self.X, self.y, lm.l2reg)
-        assert_almost_equal(got, 0, places=2)
+        assert_almost_equal(got, 0, places=1)
 
     def test_gradient_with_l2reg(self):
         lm = testee.LinearModel(l2reg=1)
         init_beta = np.random.rand(self.n_features)
         got = check_grad(
             lm.loss_function, lm.gradient, init_beta, self.X, self.y, lm.l2reg)
-        assert_almost_equal(got, 0, places=2)
+        assert_almost_equal(got, 0, places=1)
 
 
 class TestCensoredLinearModel(TestCase):
@@ -51,19 +51,19 @@ class TestCensoredLinearModel(TestCase):
         self.sigma = np.std(df['PayingPrice'][self.is_win])
 
     def test_gradient(self):
-        clm = testee.CensoredLinearModel(self.is_win)
+        clm = testee.CensoredLinearModel()
         init_beta = np.zeros(self.n_features)
         got = check_grad(
             clm.loss_function, clm.gradient, init_beta,
             self.X, self.y, self.is_win, testee.vectorized_f,
             self.sigma, clm.l2reg)
-        assert_almost_equal(got, 0, places=3)
+        assert_almost_equal(got, 0, places=1)
 
     def test_gradient_with_l2reg(self):
-        clm = testee.CensoredLinearModel(self.is_win, l2reg=1)
+        clm = testee.CensoredLinearModel(l2reg=1)
         init_beta = np.random.rand(self.n_features)
         got = check_grad(
             clm.loss_function, clm.gradient, init_beta,
             self.X, self.y, self.is_win, testee.vectorized_f,
             self.sigma, clm.l2reg)
-        assert_almost_equal(got, 0, places=3)
+        assert_almost_equal(got, 0, places=2)
