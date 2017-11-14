@@ -52,11 +52,11 @@ def read_csv(path: str):
     for colname, type_to_cast in feature_type_casting.items():
         if colname in df.columns:
             df[colname] = df[colname].astype(type_to_cast, copy=False)
-    # fill NaN in `IP` and `usertag` column with 'null' if exists
-    if 'IP' in df.columns:
-        df['IP'].fillna('null', inplace=True)
-    if 'usertag' in df.columns:
-        df['usertag'].fillna('null', inplace=True)
+    # fill NaN with 'null' if exists
+    columns_to_fillna = ['IP', 'usertag', 'URL', 'Domain']
+    for colname in columns_to_fillna:
+        if colname in df.columns:
+            df[colname].fillna('null', inplace=True)
     # write pickled dataframe to a file
     utils.write_pickled(df, path_pickled)
     return df
